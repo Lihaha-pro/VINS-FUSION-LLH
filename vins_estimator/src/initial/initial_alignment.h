@@ -32,7 +32,7 @@ class ImageFrame
         };
         map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>> > > points;
         double t;
-        Matrix3d R;
+        Matrix3d R;//Rlx * Rci
         Vector3d T;
         IntegrationBase *pre_integration;
         bool is_key_frame;

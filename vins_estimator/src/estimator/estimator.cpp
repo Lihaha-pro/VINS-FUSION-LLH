@@ -722,7 +722,7 @@ bool Estimator::initialStructure()
     // 这里解释一下SFMFeature，其存放的是特征点的信息
     Quaterniond Q[frame_count + 1];
     Vector3d T[frame_count + 1];
-    map<int, Vector3d> sfm_tracked_points;
+    map<int, Vector3d> sfm_tracked_points;///初始化之后，三角化的地图点，保存的是【特征点ID，世界系下坐标】
 
     //     struct SFMFeature 其存放的是特征点的信息
     // {
@@ -775,13 +775,14 @@ bool Estimator::initialStructure()
     // 对于所有的图像帧，包括不在滑动窗口中的，提供初始的RT估计，然后solvePnP进行优化
     //solve pnp for all frame
     // Step 计算所有非KF的位姿
-    map<double, ImageFrame>::iterator frame_it;
+    map<double, ImageFrame>::iterator frame_it;//帧迭代器
     map<int, Vector3d>::iterator it;
-    frame_it = all_image_frame.begin( );
-    for (int i = 0; frame_it != all_image_frame.end( ); frame_it++)
+    frame_it = all_image_frame.begin();
+    for (int i = 0; frame_it != all_image_frame.end(); frame_it++)
     {
         // provide initial guess
         cv::Mat r, rvec, t, D, tmp_r;
+        //若遍历到滑窗中的帧，就跳过，同时在帧管理器中直接赋值位姿信息
         if((frame_it->first) == Headers[i])
         {
             frame_it->second.is_key_frame = true;
@@ -790,6 +791,7 @@ bool Estimator::initialStructure()
             i++;
             continue;
         }
+        //若当前帧时间戳大于滑窗中第i帧时间戳，i++，不然后边的时间戳都会大于第i帧时间戳的//?能用到吗？？
         if((frame_it->first) > Headers[i])
         {
             i++;
@@ -806,12 +808,14 @@ bool Estimator::initialStructure()
         //获取 pnp需要用到的存储每个特征点三维点和图像坐标的 vector
         vector<cv::Point3f> pts_3_vector;
         vector<cv::Point2f> pts_2_vector;
+        //遍历该帧的特征点
         for (auto &id_pts : frame_it->second.points)
         {
-            int feature_id = id_pts.first;
+            int feature_id = id_pts.first;//得到特征点ID
+            //遍历观测到该特征的全部帧
             for (auto &i_p : id_pts.second)
             {
-                it = sfm_tracked_points.find(feature_id);
+                it = sfm_tracked_points.find(feature_id);//取出该特征的世界坐标
                 if(it != sfm_tracked_points.end())
                 {
                     Vector3d world_pts = it->second;

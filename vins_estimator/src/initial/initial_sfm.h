@@ -43,10 +43,12 @@ struct ReprojectionError3D
 	bool operator()(const T* const camera_R, const T* const camera_T, const T* point, T* residuals) const
 	{
 		T p[3];
-		ceres::QuaternionRotatePoint(camera_R, point, p);
-		p[0] += camera_T[0]; p[1] += camera_T[1]; p[2] += camera_T[2];
+		ceres::QuaternionRotatePoint(camera_R, point, p);//旋转这个点，其实就是转移到相机坐标系下Rcw * Pw
+		p[0] += camera_T[0]; p[1] += camera_T[1]; p[2] += camera_T[2];//在上一步基础上，添加平移向量，得到Rcw * Pw + tcw
+		//得到归一化坐标
 		T xp = p[0] / p[2];
     	T yp = p[1] / p[2];
+		//投影点与观测点作差作为残差，存入残差向量
     	residuals[0] = xp - T(observed_u);
     	residuals[1] = yp - T(observed_v);
     	return true;
@@ -56,7 +58,7 @@ struct ReprojectionError3D
 	                                   const double observed_y) 
 	{
 	  return (new ceres::AutoDiffCostFunction<
-	          ReprojectionError3D, 2, 4, 3, 3>(
+	          ReprojectionError3D, 2, 4, 3, 3>(//llh：第一项是输出维度，即二维的残差，后三项是输入的维度，分别为旋转四元数4，位置3，世界点坐标3
 	          	new ReprojectionError3D(observed_x,observed_y)));
 	}
 

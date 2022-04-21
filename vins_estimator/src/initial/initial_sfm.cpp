@@ -38,7 +38,7 @@ void GlobalSFM::triangulatePoint(Eigen::Matrix<double, 3, 4> &Pose0, Eigen::Matr
 }
 
 /**
- * @brief 利用PnP求解位姿
+ * @brief 利用PnP求解位姿，首先建立3D和2D的观测关系（得到已经具有地图点信息的特征点，得到二者坐标）
  * 
  * @param R_initial 被处理帧的初始姿态，也作为求解结果输出
  * @param P_initial 被处理帧的初始姿态
@@ -159,7 +159,7 @@ void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4> &Po
 /**
  * @brief 输入枢纽帧和当前帧位姿变换，求解各帧位姿及3D点坐标
  * 
- * @param frame_num 滑窗中帧的数量
+ * @param frame_num 滑窗中帧的数量（实际上是滑窗帧数量10+当前帧1 = 11）
  * @param q 输出：滑窗中各帧姿态（四元数）保存的是某帧到枢纽帧的变换关系（看程序可以发现是这个关系）
  * @param T 输出：滑窗中各帧平移向量
  * @param l 枢纽帧在滑窗中的ID
@@ -195,12 +195,12 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 	Matrix3d c_Rotation[frame_num];
 	Vector3d c_Translation[frame_num];
 	Quaterniond c_Quat[frame_num];
-	//?这是干啥的
+	///ceres用到的保存优化变量的二维数组（ceres只能识别double类型的数组）
 	double c_rotation[frame_num][4];
 	double c_translation[frame_num][3];
 	//将从枢纽帧到某一帧的位姿变换保存为3*4矩阵，存入Pose数组中
 	Eigen::Matrix<double, 3, 4> Pose[frame_num];
-
+	//赋值枢纽帧和当前帧的位姿
 	c_Quat[l] = q[l].inverse();
 	c_Rotation[l] = c_Quat[l].toRotationMatrix();
 	c_Translation[l] = -1 * (c_Rotation[l] * T[l]);
@@ -224,6 +224,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 		{
 			Matrix3d R_initial = c_Rotation[i - 1];
 			Vector3d P_initial = c_Translation[i - 1];
+			///利用PnP求解某帧位姿
 			if(!solveFrameByPnP(R_initial, P_initial, i, sfm_f))
 				return false;
 			c_Rotation[i] = R_initial;
@@ -234,14 +235,16 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 		}
 
 		// triangulate point based on the solve pnp result
+		///三角化地图点为3D点，更新sfm_f中的3D点坐标信息
 		triangulateTwoFrames(i, Pose[i], frame_num - 1, Pose[frame_num - 1], sfm_f);
 	}
 	//3: triangulate l-----l+1 l+2 ... frame_num -2
-	///这一步是中间的帧与枢纽帧进行三角化3D点，前面是中间帧与当前帧三角化地图点
+	///这一步是中间的帧与枢纽帧进行三角化3D点，前面是中间帧与当前帧三角化地图点（目的是获得更多的3D点）
 	for (int i = l + 1; i < frame_num - 1; i++)
 		triangulateTwoFrames(l, Pose[l], i, Pose[i], sfm_f);
 	//4: solve pnp l-1; triangulate l-1 ----- l
 	//             l-2              l-2 ----- l
+	///遍历枢纽帧前面的帧，恢复位姿
 	for (int i = l - 1; i >= 0; i--)
 	{
 		//solve pnp
@@ -255,9 +258,11 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 		Pose[i].block<3, 3>(0, 0) = c_Rotation[i];
 		Pose[i].block<3, 1>(0, 3) = c_Translation[i];
 		//triangulate
+		///用枢纽帧和前边的帧三角化地图点
 		triangulateTwoFrames(i, Pose[i], l, Pose[l], sfm_f);
 	}
 	//5: triangulate all other points
+	///三角化所有被两帧及以上数量帧观测到的特征点
 	for (int j = 0; j < feature_num; j++)
 	{
 		if (sfm_f[j].state == true)
@@ -296,6 +301,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 	ceres::Problem problem;
 	ceres::LocalParameterization* local_parameterization = new ceres::QuaternionParameterization();
 	//cout << " begin full BA " << endl;
+	///设置所有的关键帧位姿为待优化变量
 	for (int i = 0; i < frame_num; i++)
 	{
 		//double array for ceres
@@ -308,23 +314,26 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 		c_rotation[i][3] = c_Quat[i].z();
 		problem.AddParameterBlock(c_rotation[i], 4, local_parameterization);
 		problem.AddParameterBlock(c_translation[i], 3);
+		//设置枢纽帧旋转不变，
 		if (i == l)
 		{
 			problem.SetParameterBlockConstant(c_rotation[i]);
 		}
+		//设置枢纽帧位置和当前帧位置不变
 		if (i == l || i == frame_num - 1)
 		{
 			problem.SetParameterBlockConstant(c_translation[i]);
 		}
 	}
-
+	///设置重投影误差为残差块
 	for (int i = 0; i < feature_num; i++)
 	{
-		if (sfm_f[i].state != true)
+		if (sfm_f[i].state != true)//跳过没有三角化的特征
 			continue;
 		for (int j = 0; j < int(sfm_f[i].observation.size()); j++)
 		{
 			int l = sfm_f[i].observation[j].first;
+			///这里的损失函数计算方法需要自己定义
 			ceres::CostFunction* cost_function = ReprojectionError3D::Create(
 												sfm_f[i].observation[j].second.x(),
 												sfm_f[i].observation[j].second.y());
@@ -332,13 +341,12 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
     		problem.AddResidualBlock(cost_function, NULL, c_rotation[l], c_translation[l], 
     								sfm_f[i].position);	 
 		}
-
 	}
-	ceres::Solver::Options options;
+	ceres::Solver::Options options;///ceres优化选项
 	options.linear_solver_type = ceres::DENSE_SCHUR;
 	//options.minimizer_progress_to_stdout = true;
 	options.max_solver_time_in_seconds = 0.2;
-	ceres::Solver::Summary summary;
+	ceres::Solver::Summary summary;///保存ceres优化过程的信息
 	ceres::Solve(options, &problem, &summary);
 	//std::cout << summary.BriefReport() << "\n";
 	if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 5e-03)
@@ -350,24 +358,27 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 		//cout << "vision only BA not converge " << endl;
 		return false;
 	}
+	///保存优化之后的位姿信息
+	//保存姿态信息
 	for (int i = 0; i < frame_num; i++)
 	{
 		q[i].w() = c_rotation[i][0]; 
 		q[i].x() = c_rotation[i][1]; 
 		q[i].y() = c_rotation[i][2]; 
 		q[i].z() = c_rotation[i][3]; 
-		q[i] = q[i].inverse();
+		q[i] = q[i].inverse();//优化得到的是枢纽帧到某帧的位姿，q[]保存的是某帧到枢纽帧的位姿，所以求了逆
 		//cout << "final  q" << " i " << i <<"  " <<q[i].w() << "  " << q[i].vec().transpose() << endl;
 	}
+	//保存位置信息
 	for (int i = 0; i < frame_num; i++)
 	{
-
 		T[i] = -1 * (q[i] * Vector3d(c_translation[i][0], c_translation[i][1], c_translation[i][2]));
 		//cout << "final  t" << " i " << i <<"  " << T[i](0) <<"  "<< T[i](1) <<"  "<< T[i](2) << endl;
 	}
+	//保存三角化的地图点ID和坐标信息到sfm_tracked_points
 	for (int i = 0; i < (int)sfm_f.size(); i++)
 	{
-		if(sfm_f[i].state)
+		if(sfm_f[i].state)//地图点
 			sfm_tracked_points[sfm_f[i].id] = Vector3d(sfm_f[i].position[0], sfm_f[i].position[1], sfm_f[i].position[2]);
 	}
 	return true;
