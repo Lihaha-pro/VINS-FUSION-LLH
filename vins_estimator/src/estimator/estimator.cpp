@@ -628,9 +628,7 @@ void Estimator::processImage
             Bas[frame_count] = Bas[prev_frame];
             Bgs[frame_count] = Bgs[prev_frame];
         }
-
     }
-
     // 如果已经进行了初始化  
     else
     {
@@ -688,11 +686,12 @@ bool Estimator::initialStructure()
     TicToc t_sfm;
     //check imu observibility
     // 通过计算线加速度的标准差，是否小于0.25 判断IMU是否有充分运动激励，以进行初始化
-    // 注意这里并没有算上all_image_frame的第一帧，所以求均值和标准差的时候要减一
+    /// 注意这里并没有算上all_image_frame的第一帧，所以求均值和标准差的时候要减一
     // Step IMU运动激励分析
     {
         map<double, ImageFrame>::iterator frame_it;
         Vector3d sum_g;
+        //跳过第一帧遍历所有图像，计算加速度均值保存进sum_g
         for (frame_it = all_image_frame.begin(), frame_it++; frame_it != all_image_frame.end(); frame_it++)
         {
             double dt = frame_it->second.pre_integration->sum_dt;
@@ -728,7 +727,7 @@ bool Estimator::initialStructure()
     //     struct SFMFeature 其存放的是特征点的信息
     // {
     //     bool state;//状态（是否被三角化）
-    //     int id;
+    //     int id; //特征点ID
     //     vector<pair<int,Vector2d>> observation;//所有观测到该特征点的图像帧ID和图像坐标
     //     double position[3];//3d坐标
     //     double depth;//深度
@@ -736,14 +735,15 @@ bool Estimator::initialStructure()
     vector<SFMFeature> sfm_f;
     for (auto &it_per_id : f_manager.feature)
     {
-        int imu_j = it_per_id.start_frame - 1;
-        SFMFeature tmp_feature;
+        int imu_j = it_per_id.start_frame - 1;//这里减一，是因为后边赋值的时候先加一了，注意区分作用
+        SFMFeature tmp_feature;//某个特征点的信息
         tmp_feature.state = false;
         tmp_feature.id = it_per_id.feature_id;
+        //遍历观测到该特征的各个帧
         for (auto &it_per_frame : it_per_id.feature_per_frame)
         {
             imu_j++;
-            Vector3d pts_j = it_per_frame.point;
+            Vector3d pts_j = it_per_frame.point;//取出归一化坐标
             tmp_feature.observation.push_back(make_pair(imu_j, Eigen::Vector2d{pts_j.x(), pts_j.y()}));
         }
         sfm_f.push_back(tmp_feature);
@@ -754,7 +754,7 @@ bool Estimator::initialStructure()
 
     // 保证具有足够的视差,由E矩阵恢复R、t
     // 这里的第L帧是从第一帧开始到滑动窗口中第一个满足与当前帧的平均视差足够大的帧，会作为参考帧到下面的全局sfm使用，得到的Rt为当前帧到第l帧的坐标系变换Rt
-    // Step 纯视觉单目SLAM
+    // Step 纯视觉单目SLAM 找到枢纽帧，计算从当前帧到枢纽帧的位姿变换
     if (!relativePose(relative_R, relative_T, l))
     {
         ROS_INFO("Not enough features or parallax; Move device around");
@@ -878,7 +878,7 @@ bool Estimator::initialStructure()
 // 视觉和惯性的对其,对应https://mp.weixin.qq.com/s/9twYJMOE8oydAzqND0UmFw中的visualInitialAlign
 /* visualInitialAlign
 很具VIO课程第七讲:一共分为5步:
-1估计旋转外参. 2估计陀螺仪bias 3估计中立方向,速度.尺度初始值 4对重力加速度进一步优化 5将轨迹对其到世界坐标系 */
+1估计旋转外参. 2估计陀螺仪bias 3估计中立方向,速度.尺度初始值 4对重力加速度进一步优化 5将轨迹对齐到世界坐标系 */
 bool Estimator::visualInitialAlign()
 {
     TicToc t_g;
@@ -944,6 +944,7 @@ bool Estimator::visualInitialAlign()
 bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
 {
     // find previous frame which contians enough correspondance and parallex with newest frame
+    ///遍历滑窗中的所有关键帧，与当前帧计算视差，选取枢纽帧
     for (int i = 0; i < WINDOW_SIZE; i++)
     {
         //寻找第i帧到窗口最后一帧的对应特征点
@@ -969,7 +970,7 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
 
             //判断是否满足初始化条件：视差>30和内点数满足要求(大于12)
             //solveRelativeRT()通过基础矩阵计算当前帧与第l帧之间的R和T,并判断内点数目是否足够
-            //同时返回窗口最后一帧（当前帧）到第l帧（参考帧）的relative_R，relative_T
+            //llh同时返回窗口最后一帧（当前帧）到第l帧（参考帧）的relative_R，relative_T（一定注意相对关系）
             if(average_parallax * 460 > 30 && m_estimator.solveRelativeRT(corres, relative_R, relative_T))
             {
                 l = i;

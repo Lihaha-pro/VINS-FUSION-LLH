@@ -26,10 +26,10 @@ using namespace std;
 
 struct SFMFeature
 {
-    bool state;
-    int id;
-    vector<pair<int,Vector2d>> observation;
-    double position[3];
+    bool state;//该特征是否被三角化
+    int id; //特征点ID
+    vector<pair<int,Vector2d>> observation;//该特征的观测，分别为对应滑窗中的帧ID和在该帧中的坐标
+    double position[3];//该特征点对应3D点世界系下坐标
     double depth;
 };
 

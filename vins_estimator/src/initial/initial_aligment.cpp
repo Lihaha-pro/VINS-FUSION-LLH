@@ -203,7 +203,7 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
     {
         return false;
     }
-
+    ///重力细化
     RefineGravity(all_image_frame, g, x);
     s = (x.tail<1>())(0) / 100.0;
     (x.tail<1>())(0) = s;
@@ -214,12 +214,12 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
         return true;
 }
 
-// 视觉IMu的对其
+// 视觉IMu的对齐
 bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x)
 {
-    solveGyroscopeBias(all_image_frame, Bgs);
+    solveGyroscopeBias(all_image_frame, Bgs);//计算陀螺仪零偏
 
-    if(LinearAlignment(all_image_frame, g, x))
+    if(LinearAlignment(all_image_frame, g, x))//计算尺度，重力加速度，速度
         return true;
     else 
         return false;
