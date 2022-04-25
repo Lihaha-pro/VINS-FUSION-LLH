@@ -48,7 +48,12 @@ class IntegrationBase
         propagate(dt, acc, gyr);
     }
 
-    // 再传播函数 根据新的bias重新计算预积分
+    /**
+     * @brief 再传播函数 根据新的bias重新计算预积分 传入的偏置在预积分内部是不变的，因为时间比较短，就认为偏置不变了
+     * 
+     * @param _linearized_ba 
+     * @param _linearized_bg 
+     */
     void repropagate(const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg)
     {
         sum_dt = 0.0;
@@ -219,7 +224,7 @@ class IntegrationBase
     Eigen::Vector3d acc_1, gyr_1;
 
     const Eigen::Vector3d linearized_acc, linearized_gyr;
-    Eigen::Vector3d linearized_ba, linearized_bg;
+    Eigen::Vector3d linearized_ba, linearized_bg;//一组预积分项目，偏置是固定的，但是当外部更新了偏置之后，可以调用repropogate重新更新预积分
 
     Eigen::Matrix<double, 15, 15> jacobian, covariance;
     Eigen::Matrix<double, 15, 15> step_jacobian;

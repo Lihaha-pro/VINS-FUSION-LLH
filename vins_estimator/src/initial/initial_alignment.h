@@ -32,8 +32,8 @@ class ImageFrame
         };
         map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>> > > points;
         double t;
-        Matrix3d R;//Rlx * Rci
-        Vector3d T;
+        Matrix3d R;//Rwi = Rlx * Rci
+        Vector3d T;//t_wc = t_lx
         IntegrationBase *pre_integration;
         bool is_key_frame;
 };

@@ -237,7 +237,7 @@ void Estimator::inputIMU(double t, const Vector3d &linearAcceleration, const Vec
         mPropagate.lock();
         //IMU预积分更新位姿
         fastPredictIMU(t, linearAcceleration, angularVelocity);
-        //发布当前时刻的位姿
+        //发布当前时刻的位姿，这里发布的PQV就是用IMU原始数据未经处理直接积分得到的
         pubLatestOdometry(latest_P, latest_Q, latest_V, t);
         mPropagate.unlock();
     }
@@ -687,7 +687,7 @@ bool Estimator::initialStructure()
     //check imu observibility
     // 通过计算线加速度的标准差，是否小于0.25 判断IMU是否有充分运动激励，以进行初始化
     /// 注意这里并没有算上all_image_frame的第一帧，所以求均值和标准差的时候要减一
-    // Step IMU运动激励分析
+    // Step IMU运动激励分析，貌似并没有实际作用
     {
         map<double, ImageFrame>::iterator frame_it;
         Vector3d sum_g;
@@ -768,13 +768,13 @@ bool Estimator::initialStructure()
               sfm_f, sfm_tracked_points))
     {
         ROS_DEBUG("global SFM failed!");
-        marginalization_flag = MARGIN_OLD;
+        marginalization_flag = MARGIN_OLD;//?这里也进行了赋值，暂时还不知道哪里进行边缘化
         return false;
     }
 
     // 对于所有的图像帧，包括不在滑动窗口中的，提供初始的RT估计，然后solvePnP进行优化
     //solve pnp for all frame
-    // Step 计算所有非KF的位姿
+    // Step 计算所有非KF的位姿！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
     map<double, ImageFrame>::iterator frame_it;//帧迭代器
     map<int, Vector3d>::iterator it;
     frame_it = all_image_frame.begin();
@@ -796,9 +796,9 @@ bool Estimator::initialStructure()
         {
             i++;
         }
-        //注意这里的 Q和 T是图像帧的位姿，而不是求解PNP时所用的坐标系变换矩阵，两者具有对称关系
-        Matrix3d R_inital = (Q[i].inverse()).toRotationMatrix();
-        Vector3d P_inital = - R_inital * T[i];
+        //注意这里的 Q 和 T是图像帧的位姿，而不是求解PNP时所用的坐标系变换矩阵，两者具有对称关系
+        Matrix3d R_inital = (Q[i].inverse()).toRotationMatrix();//本来是Rlx，或者说Rwc，求逆就是Rcw，这样之后左乘3D点得到相机系坐标
+        Vector3d P_inital = - R_inital * T[i];//t_cw
         cv::eigen2cv(R_inital, tmp_r);
         //罗德里格斯公式将旋转矩阵转换成旋转向量
         cv::Rodrigues(tmp_r, rvec);
@@ -816,7 +816,7 @@ bool Estimator::initialStructure()
             for (auto &i_p : id_pts.second)
             {
                 it = sfm_tracked_points.find(feature_id);//取出该特征的世界坐标
-                if(it != sfm_tracked_points.end())
+                if(it != sfm_tracked_points.end())//若找到对应世界坐标（相当于完成了三角化），就取出3D-2D对应关系
                 {
                     Vector3d world_pts = it->second;
                     cv::Point3f pts_3(world_pts(0), world_pts(1), world_pts(2));
@@ -852,16 +852,16 @@ bool Estimator::initialStructure()
             ROS_DEBUG("solve pnp fail!");
             return false;
         }
-        //罗德里格斯公式将旋转矩阵转换成旋转向量
+        //同样的函数，将旋转向量转换成旋转矩阵
         cv::Rodrigues(rvec, r);
         MatrixXd R_pnp,tmp_R_pnp;
         cv::cv2eigen(r, tmp_R_pnp);
         //这里也同样需要将坐标变换矩阵转变成图像帧位姿，并转换为IMU坐标系的位姿
-        R_pnp = tmp_R_pnp.transpose();
+        R_pnp = tmp_R_pnp.transpose();//Rcw->Rwc
         MatrixXd T_pnp;
         cv::cv2eigen(t, T_pnp);
-        T_pnp = R_pnp * (-T_pnp);
-        frame_it->second.R = R_pnp * RIC[0].transpose();
+        T_pnp = R_pnp * (-T_pnp);//t_cw -> t_wc
+        frame_it->second.R = R_pnp * RIC[0].transpose();//Rwc * Rci = Rwi
         frame_it->second.T = T_pnp;
     }
 
@@ -879,7 +879,7 @@ bool Estimator::initialStructure()
 
 }
 
-// 视觉和惯性的对其,对应https://mp.weixin.qq.com/s/9twYJMOE8oydAzqND0UmFw中的visualInitialAlign
+// 视觉和惯性的对齐,对应https://mp.weixin.qq.com/s/9twYJMOE8oydAzqND0UmFw 中的visualInitialAlign
 /* visualInitialAlign
 很具VIO课程第七讲:一共分为5步:
 1估计旋转外参. 2估计陀螺仪bias 3估计中立方向,速度.尺度初始值 4对重力加速度进一步优化 5将轨迹对齐到世界坐标系 */
@@ -900,16 +900,19 @@ bool Estimator::visualInitialAlign()
     {
         Matrix3d Ri = all_image_frame[Headers[i]].R;
         Vector3d Pi = all_image_frame[Headers[i]].T;
+        ///更新滑窗中的P和R
         Ps[i] = Pi;
         Rs[i] = Ri;
-        all_image_frame[Headers[i]].is_key_frame = true;
+        all_image_frame[Headers[i]].is_key_frame = true;//这个赋值貌似是重复的，因为对齐的时候已经标记了关键帧了，都是在all_image_frame中进行的
     }
 
     double s = (x.tail<1>())(0);
+    //对滑窗中的帧重新进行预积分//?视觉惯性对齐的时候对所有帧进行了重新预积分，这里是否可以去掉呢？
     for (int i = 0; i <= WINDOW_SIZE; i++)
     {
         pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
     }
+    //?这里的位置更新没看懂是什么公式，好像是进一步恢复位置，是尺度因子s起作用的地方
     for (int i = frame_count; i >= 0; i--)
         Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
     int kv = -1;
@@ -919,6 +922,7 @@ bool Estimator::visualInitialAlign()
         if(frame_i->second.is_key_frame)
         {
             kv++;
+            ///更新滑窗中的速度V
             Vs[kv] = frame_i->second.R * x.segment<3>(kv * 3);
         }
     }
@@ -1629,7 +1633,7 @@ void Estimator::slideWindow()
         }
     }
 
-    // marg掉倒数第二帧,也很简单,另倒数第二个等于新的一个就可以
+    // marg掉倒数第二帧,也很简单,令倒数第二个等于新的一个就可以
     else
     {
         if (frame_count == WINDOW_SIZE)
