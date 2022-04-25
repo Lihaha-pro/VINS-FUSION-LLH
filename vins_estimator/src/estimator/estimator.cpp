@@ -1246,8 +1246,8 @@ void Estimator::optimization()
     if (!ESTIMATE_TD || Vs[0].norm() < 0.2)//如果不估计时间就固定
         problem.SetParameterBlockConstant(para_Td[0]);
 
-    // ------------------------在问题中添加约束,也就是构造残差函数---------------------------------- 
-    // 在问题中添加先验信息作为约束
+    // ------------------------在问题中添加约束,也就是构造残差函数 Factor---------------------------------- 
+    ///添加先验信息作为约束：1个
     if (last_marginalization_info && last_marginalization_info->valid)
     {
         // 构造新的marginisation_factor construct new marginlization_factor
@@ -1262,7 +1262,7 @@ void Estimator::optimization()
                                  last_marginalization_parameter_blocks);
     }
 
-    // 在问题中添加IMU约束
+    ///添加IMU约束：WINDOW_SIZE个（滑窗相邻帧构建一个IMU约束）
     if(USE_IMU)
     {
         for (int i = 0; i < frame_count; i++)
@@ -1275,7 +1275,7 @@ void Estimator::optimization()
                 //这里添加的参数包括状态i和状态j
         }
     }
-
+    ///添加视觉重投影约束：观测次数大于2的特征，首次观测与之后每次观测构造一个约束 
     int f_m_cnt = 0; //每个特征点,观测到它的相机的计数 visual measurement count
     int feature_index = -1;
     for (auto &it_per_id : f_manager.feature)
@@ -1333,9 +1333,9 @@ void Estimator::optimization()
 
     // ------------------------------------写下来配置优化选项,并进行求解-----------------------------------------
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.linear_solver_type = ceres::DENSE_SCHUR;//?为什么是稠密的呢
     //options.num_threads = 2;
-    options.trust_region_strategy_type = ceres::DOGLEG;
+    options.trust_region_strategy_type = ceres::DOGLEG;//类似还有LEVENBERG_MARQUARDT
     options.max_num_iterations = NUM_ITERATIONS;
     //options.use_explicit_schur_complement = true;
     //options.minimizer_progress_to_stdout = true;
@@ -1347,7 +1347,7 @@ void Estimator::optimization()
         options.max_solver_time_in_seconds = SOLVER_TIME;
     TicToc t_solver;
     ceres::Solver::Summary summary;//优化信息
-    ceres::Solve(options, &problem, &summary);
+    ceres::Solve(options, &problem, &summary);///求解Ceres
     //cout << summary.BriefReport() << endl;
     ROS_DEBUG("Iterations : %d", static_cast<int>(summary.iterations.size()));
     //printf("solver costs: %f \n", t_solver.toc());

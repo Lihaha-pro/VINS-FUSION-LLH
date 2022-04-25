@@ -19,12 +19,20 @@
 #include <ceres/ceres.h>
 
 // IMU的损失函数
+/* ///注意一组IMU残差涉及到相邻两帧的IMU数据
+15: 残差向量的长度(包括p,v,q,ba,bg)
+7: 第1个优化参数的长度(para_Pose[i])
+9: 第2个优化参数的长度(para_SpeedBias[i])
+7: 第3个优化参数的长度(para_Pose[j])
+9: 第4个优化参数的长度(para_SpeedBias[j])
+参考链接：https://blog.csdn.net/q597967420/article/details/76099443
+*/
 class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 {
   public:
     IMUFactor() = delete;
     
-    // IMU的损失函数
+    // IMU的损失函数，有参构造函数，传入了第i帧的预积分项
     IMUFactor(IntegrationBase* _pre_integration):pre_integration(_pre_integration)
     {
     }
@@ -33,17 +41,17 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
     这个函数通过传入的优化变量值parameters，以及先验值（对于先验残差就是上一时刻的先验残差last_marginalization_info，
     对于IMU就是预计分值pre_integrations[1]，对于视觉就是空间的的像素坐标pts_i, pts_j）
     可以计算出各项残差值residuals，以及残差对应个优化变量的雅克比矩阵jacobians。
-    原文链接：https://blog.csdn.net/weixin_44580210/article/details/95748091*/
+    原文链接：https://blog.csdn.net/weixin_44580210/article/details/95748091 */
     virtual bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
     {
-
+        //第i帧位置（3）和姿态（4）：共7维
         Eigen::Vector3d Pi(parameters[0][0], parameters[0][1], parameters[0][2]);
         Eigen::Quaterniond Qi(parameters[0][6], parameters[0][3], parameters[0][4], parameters[0][5]);
-
+        //第i帧速度（3） + acc bias（3） + gyro bias（3）：共9维
         Eigen::Vector3d Vi(parameters[1][0], parameters[1][1], parameters[1][2]);
         Eigen::Vector3d Bai(parameters[1][3], parameters[1][4], parameters[1][5]);
         Eigen::Vector3d Bgi(parameters[1][6], parameters[1][7], parameters[1][8]);
-
+        //第j帧的待优化变量
         Eigen::Vector3d Pj(parameters[2][0], parameters[2][1], parameters[2][2]);
         Eigen::Quaterniond Qj(parameters[2][6], parameters[2][3], parameters[2][4], parameters[2][5]);
 
@@ -74,8 +82,9 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
             pre_integration->repropagate(Bai, Bgi);
         }
 #endif
-
-        Eigen::Map<Eigen::Matrix<double, 15, 1>> residual(residuals);
+        //Map类用于通过C++中普通的连续指针或者数组 （raw C/C++ arrays）来构造Eigen里的Matrix类，这就好比Eigen里的Matrix类的数据和raw C++array 共享了一片地址，也就是引用。
+        Eigen::Map<Eigen::Matrix<double, 15, 1>> residual(residuals);//传入指针构造一个引用
+        ///实际上调用IntegrationBase::evaluate()来实现残差计算
         residual = pre_integration->evaluate(Pi, Qi, Vi, Bai, Bgi,
                                             Pj, Qj, Vj, Baj, Bgj);
 

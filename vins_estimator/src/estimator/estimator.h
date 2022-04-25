@@ -151,8 +151,8 @@ class Estimator
     double initial_timestamp;//初始时间戳
 
 
-    double para_Pose[WINDOW_SIZE + 1][SIZE_POSE];//11*7,放了划窗内帧的位姿
-    double para_SpeedBias[WINDOW_SIZE + 1][SIZE_SPEEDBIAS];
+    double para_Pose[WINDOW_SIZE + 1][SIZE_POSE];//11*7,放了划窗内帧的位姿，位置4维，姿态四元数3维
+    double para_SpeedBias[WINDOW_SIZE + 1][SIZE_SPEEDBIAS];//11*9，滑窗中关键帧速度，以及加速度零偏和陀螺仪零偏
     double para_Feature[NUM_OF_F][SIZE_FEATURE];
     double para_Ex_Pose[2][SIZE_POSE];//相机外部参数的位姿 2*7 两个相机的位姿
     double para_Retrive_Pose[SIZE_POSE];
