@@ -114,7 +114,7 @@ class Estimator
 
     Matrix3d ric[2];
     Vector3d tic[2];
-
+    //以下变量均为从bk到c0，也就是从某帧的IMU到第0帧的位姿变换（不过初始化阶段保存了一些其他中间变量）
     Vector3d        Ps[(WINDOW_SIZE + 1)];//划窗内所有的p
     Vector3d        Vs[(WINDOW_SIZE + 1)];//划窗内所有的速度
     Matrix3d        Rs[(WINDOW_SIZE + 1)];//划窗内所有的R

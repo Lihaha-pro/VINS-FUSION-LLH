@@ -181,7 +181,7 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     setParameter();//?这里和主函数中的执行的是否发生了冲突呢
 
     inputImageCnt++;//、
-    // 数据格式为feature_id camera_id（0或1） xyz_uv_velocity（空间坐标，像素坐标和像素速度）
+    // 数据格式为键：特征点ID 值：feature_id camera_id（0或1） xyz_uv_velocity（空间坐标，像素坐标和像素速度）
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
     
 
@@ -314,7 +314,10 @@ bool Estimator::IMUAvailable(double t)
         return false;
 }
 
-//处理量测的线程
+/**
+ * @brief 真正的主线程函数
+ * 
+ */
 void Estimator::processMeasurements()
 {
     while (1)
@@ -457,7 +460,7 @@ void Estimator::processIMU(double t, double dt, const Vector3d &linear_accelerat
         // push_back进行了重载，的时候就已经进行了预积分
 
         //if(solver_flag != NON_LINEAR)
-        tmp_pre_integration->push_back(dt, linear_acceleration, angular_velocity);//这个是输入到图像中的预积分值
+        tmp_pre_integration->push_back(dt, linear_acceleration, angular_velocity);//这个是输入到图像中的预积分值，每帧图片对应一个预积分值//?
 
         dt_buf[frame_count].push_back(dt);
         linear_acceleration_buf[frame_count].push_back(linear_acceleration);
@@ -720,6 +723,7 @@ bool Estimator::initialStructure()
 
     // 将f_manager中的所有feature保存到vector<SFMFeature> sfm_f中
     // 这里解释一下SFMFeature，其存放的是特征点的信息
+    ///注意是某帧到枢纽帧的位姿变换
     Quaterniond Q[frame_count + 1];
     Vector3d T[frame_count + 1];
     map<int, Vector3d> sfm_tracked_points;///初始化之后，三角化的地图点，保存的是【特征点ID，世界系下坐标】
@@ -747,7 +751,7 @@ bool Estimator::initialStructure()
             tmp_feature.observation.push_back(make_pair(imu_j, Eigen::Vector2d{pts_j.x(), pts_j.y()}));
         }
         sfm_f.push_back(tmp_feature);
-    } 
+    }
     Matrix3d relative_R;
     Vector3d relative_T;
     int l;
@@ -863,7 +867,7 @@ bool Estimator::initialStructure()
         T_pnp = R_pnp * (-T_pnp);//t_cw -> t_wc
         frame_it->second.R = R_pnp * RIC[0].transpose();//Rwc * Rci = Rwi
         frame_it->second.T = T_pnp;
-    }
+    }//至此非关键帧位姿计算完毕
 
     /* visualInitialAlign
     很具VIO课程第七讲:一共分为5步:
@@ -906,7 +910,7 @@ bool Estimator::visualInitialAlign()
         all_image_frame[Headers[i]].is_key_frame = true;//这个赋值貌似是重复的，因为对齐的时候已经标记了关键帧了，都是在all_image_frame中进行的
     }
 
-    double s = (x.tail<1>())(0);
+    double s = (x.tail<1>())(0);//获得计算得到的尺度因子
     //对滑窗中的帧重新进行预积分//?视觉惯性对齐的时候对所有帧进行了重新预积分，这里是否可以去掉呢？
     for (int i = 0; i <= WINDOW_SIZE; i++)
     {
@@ -914,7 +918,7 @@ bool Estimator::visualInitialAlign()
     }
     //?这里的位置更新没看懂是什么公式，好像是进一步恢复位置，是尺度因子s起作用的地方
     for (int i = frame_count; i >= 0; i--)
-        Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
+        Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);///参照论文中公式6，得到Pwb，同时相对于滑窗中第0帧
     int kv = -1;
     map<double, ImageFrame>::iterator frame_i;
     for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++)
@@ -927,8 +931,8 @@ bool Estimator::visualInitialAlign()
         }
     }
 
-    Matrix3d R0 = Utility::g2R(g);
-    double yaw = Utility::R2ypr(R0 * Rs[0]).x();
+    Matrix3d R0 = Utility::g2R(g);//得到重力对齐到z方向的旋转矩阵
+    double yaw = Utility::R2ypr(R0 * Rs[0]).x();///这里相对于滑窗中第0帧提取了yaw角，也就是说是以第0帧为世界系
     R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
     g = R0 * g;
     //Matrix3d rot_diff = R0 * Rs[0].transpose();
@@ -1026,7 +1030,7 @@ void Estimator::vector2double()
             para_SpeedBias[i][8] = Bgs[i].z();
         }
     }
-
+    //相机外参
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
         para_Ex_Pose[i][0] = tic[i].x();
@@ -1200,7 +1204,7 @@ void Estimator::optimization()
     loss_function = new ceres::HuberLoss(1.0);//HuberLoss当预测偏差小于 δ 时，它采用平方误差,当预测偏差大于 δ 时，采用的线性误差。
     //loss_function = new ceres::CauchyLoss(1.0 / FOCAL_LENGTH);
     //ceres::LossFunction* loss_function = new ceres::HuberLoss(1.0);
-
+    ///添加滑窗中帧位姿为待优化变量（参数块）
     for (int i = 0; i < frame_count + 1; i++)
     {
         // 对于四元数或者旋转矩阵这种使用过参数化表示旋转的方式，它们是不支持广义的加法
@@ -1219,12 +1223,12 @@ void Estimator::optimization()
         // 固定第一帧的位姿不变!  这里涉及到论文2中的
         problem.SetParameterBlockConstant(para_Pose[0]);
 
-
+    ///添加相机IMU外参作为参数块
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
         ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
         problem.AddParameterBlock(para_Ex_Pose[i], SIZE_POSE, local_parameterization);//如果是双目,估计两个相机的位姿
-
+        //判断是否需要估计外参，无需估计就设置该参数块固定
         if ((ESTIMATE_EXTRINSIC && frame_count == WINDOW_SIZE && Vs[0].norm() > 0.2) || openExEstimation)
         //Vs[0].norm() > 0.2窗口内第一个速度>2?
         {
@@ -1237,7 +1241,7 @@ void Estimator::optimization()
             problem.SetParameterBlockConstant(para_Ex_Pose[i]);
         }
     }
-
+    ///添加传感器时延作为参数块
     problem.AddParameterBlock(para_Td[0], 1);//把时间也作为待优化变量
     if (!ESTIMATE_TD || Vs[0].norm() < 0.2)//如果不估计时间就固定
         problem.SetParameterBlockConstant(para_Td[0]);

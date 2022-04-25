@@ -72,7 +72,7 @@ public:
     vector<cv::Point2f> prev_pts, cur_pts, cur_right_pts; //cur_pts当前帧上的特征点，双目中的左目，并且应该像素坐标
     vector<cv::Point2f> prev_un_pts, cur_un_pts, cur_un_right_pts; //为归一化相机座标系下的座标。
     vector<cv::Point2f> pts_velocity, right_pts_velocity; //像素移动速度
-    vector<int> ids, ids_right; //ids这个好像就是当前帧特征点数目的索引
+    vector<int> ids, ids_right; //ids保存了特征点的全局ID，
     vector<int> track_cnt;//保存了当前追踪到的角点一共被多少帧图像追踪到
     map<int, cv::Point2f> cur_un_pts_map, prev_un_pts_map; //cur_un_pts_map中存放ids[i]和cur_un_pts[i]构成的键值对。
     map<int, cv::Point2f> cur_un_right_pts_map, prev_un_right_pts_map;//当前右目上的点

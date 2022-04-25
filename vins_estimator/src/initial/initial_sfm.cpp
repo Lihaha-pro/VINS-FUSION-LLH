@@ -334,6 +334,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 		{
 			int l = sfm_f[i].observation[j].first;
 			///这里的损失函数计算方法需要自己定义
+			//?这里重载括号运算符，用到了世界系下的坐标，那么这个3D坐标是被优化变量吗？
 			ceres::CostFunction* cost_function = ReprojectionError3D::Create(
 												sfm_f[i].observation[j].second.x(),
 												sfm_f[i].observation[j].second.y());
@@ -372,6 +373,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 	//保存位置信息
 	for (int i = 0; i < frame_num; i++)
 	{
+		//由于保存的是某帧到枢纽帧的位置，所以要做一下简单的坐标系变换
 		T[i] = -1 * (q[i] * Vector3d(c_translation[i][0], c_translation[i][1], c_translation[i][2]));
 		//cout << "final  t" << " i " << i <<"  " << T[i](0) <<"  "<< T[i](1) <<"  "<< T[i](2) << endl;
 	}

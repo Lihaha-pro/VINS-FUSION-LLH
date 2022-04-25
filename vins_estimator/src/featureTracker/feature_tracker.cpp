@@ -64,7 +64,7 @@ FeatureTracker::FeatureTracker()
 // 在同一区域内，追踪到次数最多的点会被保留，其他的点会被删除
 void FeatureTracker::setMask()
 {
-    mask = cv::Mat(row, col, CV_8UC1, cv::Scalar(255)); // 标记点的图像
+    mask = cv::Mat(row, col, CV_8UC1, cv::Scalar(255)); // 特征提取掩模，这里重新初始化全为255
 
     // 保存长时间跟踪到的特征点 prefer to keep features that are tracked for long time
     vector<pair<int, pair<cv::Point2f, int>>> cnt_pts_id;// 特征点被观察次数，点位置和点id

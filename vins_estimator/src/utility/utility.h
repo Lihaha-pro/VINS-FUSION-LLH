@@ -73,7 +73,12 @@ class Utility
         ans.template block<3, 1>(1, 0) = pp.vec(), ans.template block<3, 3>(1, 1) = pp.w() * Eigen::Matrix<typename Derived::Scalar, 3, 3>::Identity() - skewSymmetric(pp.vec());
         return ans;
     }
-
+    /**
+     * @brief 从旋转矩阵获得欧拉角
+     * 
+     * @param R 
+     * @return Eigen::Vector3d 位置012分别对应yaw pitch roll
+     */
     static Eigen::Vector3d R2ypr(const Eigen::Matrix3d &R)
     {
         Eigen::Vector3d n = R.col(0);
@@ -90,7 +95,13 @@ class Utility
 
         return ypr / M_PI * 180.0;
     }
-
+    /**
+     * @brief 从欧拉角获得旋转矩阵
+     * 
+     * @tparam Derived 
+     * @param ypr 
+     * @return Eigen::Matrix<typename Derived::Scalar, 3, 3> 
+     */
     template <typename Derived>
     static Eigen::Matrix<typename Derived::Scalar, 3, 3> ypr2R(const Eigen::MatrixBase<Derived> &ypr)
     {
