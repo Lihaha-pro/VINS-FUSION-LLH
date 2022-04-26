@@ -13,7 +13,16 @@
 
 Eigen::Matrix2d ProjectionTwoFrameOneCamFactor::sqrt_info;// 信息矩阵
 double ProjectionTwoFrameOneCamFactor::sum_t;
-
+/**
+ * @brief Construct a new Projection Two Frame One Cam Factor:: Projection Two Frame One Cam Factor object
+ * 
+ * @param _pts_i 特征在第i帧归一化坐标
+ * @param _pts_j 特征在第j帧归一化坐标
+ * @param _velocity_i 特征在第i帧速度
+ * @param _velocity_j 特征在第j帧速度
+ * @param _td_i 第i帧对应传感器时延
+ * @param _td_j 第j帧对应传感器时延
+ */
 ProjectionTwoFrameOneCamFactor::ProjectionTwoFrameOneCamFactor(const Eigen::Vector3d &_pts_i, const Eigen::Vector3d &_pts_j, 
                                        const Eigen::Vector2d &_velocity_i, const Eigen::Vector2d &_velocity_j,
                                        const double _td_i, const double _td_j) : 
@@ -39,7 +48,15 @@ ProjectionTwoFrameOneCamFactor::ProjectionTwoFrameOneCamFactor(const Eigen::Vect
     tangent_base.block<1, 3>(1, 0) = b2.transpose();
 #endif
 };
-
+/**
+ * @brief 重载的Ceres Evaluate函数，声明见.h文件
+ * 
+ * @param parameters 
+ * @param residuals 
+ * @param jacobians 
+ * @return true 
+ * @return false 
+ */
 bool ProjectionTwoFrameOneCamFactor::Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
 {
     TicToc tic_toc;
@@ -59,6 +76,7 @@ bool ProjectionTwoFrameOneCamFactor::Evaluate(double const *const *parameters, d
     Eigen::Vector3d pts_i_td, pts_j_td;
     pts_i_td = pts_i - (td - td_i) * velocity_i;
     pts_j_td = pts_j - (td - td_j) * velocity_j;
+    ///以下几步为：i帧中图像中的点=>i帧相机系=>i帧body系=>world系=>j帧body系=>j帧相机系
     Eigen::Vector3d pts_camera_i = pts_i_td / inv_dep_i;
     Eigen::Vector3d pts_imu_i = qic * pts_camera_i + tic;
     Eigen::Vector3d pts_w = Qi * pts_imu_i + Pi;
@@ -73,7 +91,7 @@ bool ProjectionTwoFrameOneCamFactor::Evaluate(double const *const *parameters, d
     residual = (pts_camera_j / dep_j).head<2>() - pts_j_td.head<2>();
 #endif
 
-    residual = sqrt_info * residual;
+    residual = sqrt_info * residual;///信息矩阵的赋值在setParameter()函数中
 
     if (jacobians)
     {

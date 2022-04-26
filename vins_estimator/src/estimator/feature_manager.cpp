@@ -397,7 +397,7 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
         {
             int imu_i = it_per_id.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose;
-            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
+            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];//?这俩坐标是什么东西
             Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
             leftPose.leftCols<3>() = R0.transpose();
             leftPose.rightCols<1>() = -R0.transpose() * t0;

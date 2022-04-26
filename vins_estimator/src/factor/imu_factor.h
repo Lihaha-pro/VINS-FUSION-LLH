@@ -87,10 +87,10 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
         ///实际上调用IntegrationBase::evaluate()来实现残差计算
         residual = pre_integration->evaluate(Pi, Qi, Vi, Bai, Bgi,
                                             Pj, Qj, Vj, Baj, Bgj);
-
+        //把协方差矩阵的逆分解为LL^T，这样新的残差函数就包含了信息矩阵了
         Eigen::Matrix<double, 15, 15> sqrt_info = Eigen::LLT<Eigen::Matrix<double, 15, 15>>(pre_integration->covariance.inverse()).matrixL().transpose();
         //sqrt_info.setIdentity();
-        residual = sqrt_info * residual;
+        residual = sqrt_info * residual;//协方差越大权值越小，协方差越小权值越大
 
         if (jacobians)
         {
@@ -102,7 +102,7 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 
             Eigen::Matrix3d dv_dba = pre_integration->jacobian.template block<3, 3>(O_V, O_BA);
             Eigen::Matrix3d dv_dbg = pre_integration->jacobian.template block<3, 3>(O_V, O_BG);
-
+            //?更新jacobian并进行numerical unstable判断，这是干啥呢？
             if (pre_integration->jacobian.maxCoeff() > 1e8 || pre_integration->jacobian.minCoeff() < -1e8)
             {
                 ROS_WARN("numerical unstable in preintegration");

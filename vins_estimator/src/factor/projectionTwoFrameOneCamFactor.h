@@ -19,6 +19,14 @@
 #include "../estimator/parameters.h"
 
 // 视觉损失函数
+/*
+2: 残差长度2(err_x, err_y)
+7: 第1个优化参数pose_i的长度(para_Pose[imu_i]=(px,py,pz,qx,qy,qz,qw) )
+7: 第2个优化参数pose_j的长度(para_Pose[imu_j])
+7: 第3个优化参数外参的长度(para_Ex_Pose[0])
+1: 第4个优化参数feature_inverse_depth的长度(para_Feature[feature_index])
+1: 第5个优化参数td传感器时延(para_Td[0])
+*/
 class ProjectionTwoFrameOneCamFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 1, 1>
 {
   public:

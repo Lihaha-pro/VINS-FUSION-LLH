@@ -76,7 +76,7 @@ cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg)
 // 并将图像输入到估计器中
 void sync_process()
 {
-    while(1)
+    while(1)//始终循环，没有跳出
     {
         if(STEREO)//如果是双目
         {

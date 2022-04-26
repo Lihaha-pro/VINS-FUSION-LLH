@@ -336,7 +336,7 @@ void Estimator::processMeasurements()
             while(1)
             {
                 if ((!USE_IMU  || IMUAvailable(feature.first + td)))//如果不用imu或者
-                    break;
+                    break;//等待IMU数据来，也是这个函数while(1)跳出的“唯一”条件
                 else
                 {
                     printf("wait for imu ... \n");
@@ -1276,15 +1276,15 @@ void Estimator::optimization()
         }
     }
     ///添加视觉重投影约束：观测次数大于2的特征，首次观测与之后每次观测构造一个约束 
-    int f_m_cnt = 0; //每个特征点,观测到它的相机的计数 visual measurement count
+    int f_m_cnt = 0; //总的建立约束的特征被多少相机观测到 visual measurement count
     int feature_index = -1;
     for (auto &it_per_id : f_manager.feature)
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
-        if (it_per_id.used_num < 4)
+        if (it_per_id.used_num < 4)//?为什么要求观测次数至少是4次呢
             continue;
  
-        ++feature_index;
+        ++feature_index;///建立约束的地图点个数，或者叫索引（满足四次观测的特征的个数）
 
         // imu_i该特征点第一次被观测到的帧 ,imu_j = imu_i - 1
         int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
@@ -1576,7 +1576,11 @@ void Estimator::optimization()
     //printf("whole time for ceres: %f \n", t_whole.toc());
 }
 
-// 滑动窗口法
+/**
+ * @brief 滑动窗口，更新滑窗内的各个变量
+ * 如果是划掉最老帧，就统一向前赋值
+ * 如果是划掉倒数第二帧，就令倒数第二帧等于当前帧
+ */
 void Estimator::slideWindow()
 {
     TicToc t_margin;
