@@ -241,8 +241,8 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
  * 
  * @param all_image_frame 
  * @param Bgs //滑窗中各帧的角速度零偏
- * @param g 
- * @param x 输出：各帧速度等求解结果保存在x中
+ * @param g 输出：c0系下的重力加速度向量
+ * @param x 输出：各帧IMU系下的速度，尺度因子
  * @return true 
  * @return false 
  */

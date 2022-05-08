@@ -46,7 +46,7 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
     {
         //第i帧位置（3）和姿态（4）：共7维
         Eigen::Vector3d Pi(parameters[0][0], parameters[0][1], parameters[0][2]);
-        Eigen::Quaterniond Qi(parameters[0][6], parameters[0][3], parameters[0][4], parameters[0][5]);
+        Eigen::Quaterniond Qi(parameters[0][6], parameters[0][3], parameters[0][4], parameters[0][5]);//Eigen四元数的实部在最前边
         //第i帧速度（3） + acc bias（3） + gyro bias（3）：共9维
         Eigen::Vector3d Vi(parameters[1][0], parameters[1][1], parameters[1][2]);
         Eigen::Vector3d Bai(parameters[1][3], parameters[1][4], parameters[1][5]);
@@ -210,7 +210,7 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
     //void checkCorrection();
     //void checkTransition();
     //void checkJacobian(double **parameters);
-    IntegrationBase* pre_integration;
+    IntegrationBase* pre_integration;//Ceres重载函数计算IMU残差用的第i帧的预积分量
 
 };
 

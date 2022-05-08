@@ -35,7 +35,11 @@ void FeatureManager::clearState()
     feature.clear();
 }
 
-// 得到这一帧上特征点的数量
+/**
+ * @brief 得到feature中观测次数大于等于4次的特征数量
+ * 
+ * @return int 
+ */
 int FeatureManager::getFeatureCount()
 {
     int cnt = 0;

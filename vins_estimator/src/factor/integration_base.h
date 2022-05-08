@@ -190,13 +190,16 @@ class IntegrationBase
      
     }
 
-    // 计算残差
+    /**
+     * @brief IMU残差计算函数
+     * 
+     */
     Eigen::Matrix<double, 15, 1> evaluate(const Eigen::Vector3d &Pi, const Eigen::Quaterniond &Qi, const Eigen::Vector3d &Vi, const Eigen::Vector3d &Bai, const Eigen::Vector3d &Bgi,
                                           const Eigen::Vector3d &Pj, const Eigen::Quaterniond &Qj, const Eigen::Vector3d &Vj, const Eigen::Vector3d &Baj, const Eigen::Vector3d &Bgj)
     {
         Eigen::Matrix<double, 15, 1> residuals;
 
-        Eigen::Matrix3d dp_dba = jacobian.block<3, 3>(O_P, O_BA);
+        Eigen::Matrix3d dp_dba = jacobian.block<3, 3>(O_P, O_BA);//起点坐标为0,9对应的3*3矩阵
         Eigen::Matrix3d dp_dbg = jacobian.block<3, 3>(O_P, O_BG);
 
         Eigen::Matrix3d dq_dbg = jacobian.block<3, 3>(O_R, O_BG);

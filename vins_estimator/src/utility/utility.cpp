@@ -8,6 +8,7 @@
  *******************************************************/
 
 #include "utility.h"
+#include <iostream>
 
 //从输入的加速度和重力加速度得到一个初始位姿
 Eigen::Matrix3d Utility::g2R(const Eigen::Vector3d &g)
@@ -24,6 +25,7 @@ Eigen::Matrix3d Utility::g2R(const Eigen::Vector3d &g)
     //这里是对yaw取反之后乘在原来的R0，让yaw=0的一个措施
     //TODO:如果加入磁力计的话就在这里
     double yaw = Utility::R2ypr(R0).x();//?这里就是获得了yaw角的大小吗？
+    std::cout << "origin yaw = " << yaw << std::endl;
     R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
     // R0 = Utility::ypr2R(Eigen::Vector3d{-90, 0, 0}) * R0;
     return R0;

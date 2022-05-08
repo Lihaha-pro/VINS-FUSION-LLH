@@ -435,6 +435,15 @@ void Estimator::initFirstPose(Eigen::Vector3d p, Eigen::Matrix3d r)
 
 /* 对imu计算预积分
 传进来的是一个imu数据 得到预积分值pre_integrations 还有一个tmp_pre_integration */
+
+/**
+ * @brief 
+ * 
+ * @param t 貌似并没有用到
+ * @param dt 
+ * @param linear_acceleration 
+ * @param angular_velocity 
+ */
 void Estimator::processIMU(double t, double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
 {
     // 第一个imu处理
@@ -723,7 +732,7 @@ bool Estimator::initialStructure()
 
     // 将f_manager中的所有feature保存到vector<SFMFeature> sfm_f中
     // 这里解释一下SFMFeature，其存放的是特征点的信息
-    ///注意是某帧到枢纽帧的位姿变换
+    ///注意是某帧到枢纽帧的位姿变换Twc
     Quaterniond Q[frame_count + 1];
     Vector3d T[frame_count + 1];
     map<int, Vector3d> sfm_tracked_points;///初始化之后，三角化的地图点，保存的是【特征点ID，世界系下坐标】
@@ -851,6 +860,7 @@ bool Estimator::initialStructure()
          *   int     flags = SOLVEPNP_ITERATIVE 采用LM优化
          *)   
          */
+        ///这里得到的是Rcw
         if (! cv::solvePnP(pts_3_vector, pts_2_vector, K, D, rvec, t, 1))
         {
             ROS_DEBUG("solve pnp fail!");
@@ -861,9 +871,10 @@ bool Estimator::initialStructure()
         MatrixXd R_pnp,tmp_R_pnp;
         cv::cv2eigen(r, tmp_R_pnp);
         //这里也同样需要将坐标变换矩阵转变成图像帧位姿，并转换为IMU坐标系的位姿
-        R_pnp = tmp_R_pnp.transpose();//Rcw->Rwc
+        R_pnp = tmp_R_pnp.transpose();///Rcw->Rwc
         MatrixXd T_pnp;
         cv::cv2eigen(t, T_pnp);
+        ///这里把所有帧的位姿都转为Rwi
         T_pnp = R_pnp * (-T_pnp);//t_cw -> t_wc
         frame_it->second.R = R_pnp * RIC[0].transpose();//Rwc * Rci = Rwi
         frame_it->second.T = T_pnp;
@@ -892,6 +903,7 @@ bool Estimator::visualInitialAlign()
     TicToc t_g;
     VectorXd x;
     //solve scale
+    // Step 视觉IMU对齐具体函数
     bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x);
     if(!result)
     {
@@ -916,9 +928,9 @@ bool Estimator::visualInitialAlign()
     {
         pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
     }
-    //?这里的位置更新没看懂是什么公式，好像是进一步恢复位置，是尺度因子s起作用的地方
+    //?这里的位置更新没看懂是什么公式，好像是进一步恢复位置，是尺度因子s起作用的地方？：
     for (int i = frame_count; i >= 0; i--)
-        Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);///参照论文中公式6，得到Pwb，同时相对于滑窗中第0帧
+        Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);/// 参照论文中公式6，得到Pwb，同时相对于滑窗中第0帧
     int kv = -1;
     map<double, ImageFrame>::iterator frame_i;
     for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++)
@@ -933,6 +945,7 @@ bool Estimator::visualInitialAlign()
 
     Matrix3d R0 = Utility::g2R(g);//得到重力对齐到z方向的旋转矩阵
     double yaw = Utility::R2ypr(R0 * Rs[0]).x();///这里相对于滑窗中第0帧提取了yaw角，也就是说是以第0帧为世界系
+    cout << "yaw = " << yaw << endl;
     R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
     g = R0 * g;
     //Matrix3d rot_diff = R0 * Rs[0].transpose();
@@ -998,7 +1011,7 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
 /*可以看出来，这里面生成的优化变量由：
 para_Pose（7维，相机位姿）、
 para_SpeedBias（9维，相机速度、加速度偏置、角速度偏置）、
-para_Ex_Pose（6维、相机IMU外参）、
+para_Ex_Pose（7维、相机IMU外参：平移3维，旋转四元数4维）、
 para_Feature（1维，特征点深度）、
 para_Td（1维，标定同步时间）
 五部分组成，在后面进行边缘化操作时这些优化变量都是当做整体看待。*/
@@ -1204,7 +1217,7 @@ void Estimator::optimization()
     loss_function = new ceres::HuberLoss(1.0);//HuberLoss当预测偏差小于 δ 时，它采用平方误差,当预测偏差大于 δ 时，采用的线性误差。
     //loss_function = new ceres::CauchyLoss(1.0 / FOCAL_LENGTH);
     //ceres::LossFunction* loss_function = new ceres::HuberLoss(1.0);
-    ///添加滑窗中帧位姿为待优化变量（参数块）
+    //Step 1.1 添加滑窗中帧位姿为待优化变量（参数块）
     for (int i = 0; i < frame_count + 1; i++)
     {
         // 对于四元数或者旋转矩阵这种使用过参数化表示旋转的方式，它们是不支持广义的加法
@@ -1223,31 +1236,31 @@ void Estimator::optimization()
         // 固定第一帧的位姿不变!  这里涉及到论文2中的
         problem.SetParameterBlockConstant(para_Pose[0]);
 
-    ///添加相机IMU外参作为参数块
+    // Step 1.2 添加相机IMU外参作为参数块
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
         ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
         problem.AddParameterBlock(para_Ex_Pose[i], SIZE_POSE, local_parameterization);//如果是双目,估计两个相机的位姿
-        //判断是否需要估计外参，无需估计就设置该参数块固定
+        //判断是否需要估计外参，无需估计就设置该参数块固定 ///为零表示有了精确的外参
         if ((ESTIMATE_EXTRINSIC && frame_count == WINDOW_SIZE && Vs[0].norm() > 0.2) || openExEstimation)
         //Vs[0].norm() > 0.2窗口内第一个速度>2?
         {
             //ROS_INFO("estimate extinsic param");
-            openExEstimation = 1;//打开外部估计
+            openExEstimation = 1;//打开外部估计，该标志位仅在这里进行赋值
         }
-        else//如果不需要估计,则把估计器中的外部参数设为定值
+        else//如果不需要估计,则把估计器中的外部参数设为定值 标志位为0表示有了确切的外参
         {
             //ROS_INFO("fix extinsic param");
             problem.SetParameterBlockConstant(para_Ex_Pose[i]);
         }
     }
-    ///添加传感器时延作为参数块
+    // Step 1.3 添加传感器时延作为参数块
     problem.AddParameterBlock(para_Td[0], 1);//把时间也作为待优化变量
     if (!ESTIMATE_TD || Vs[0].norm() < 0.2)//如果不估计时间就固定
         problem.SetParameterBlockConstant(para_Td[0]);
 
     // ------------------------在问题中添加约束,也就是构造残差函数 Factor---------------------------------- 
-    ///添加先验信息作为约束：1个
+    //Step 2.1 添加先验信息作为约束：1个
     if (last_marginalization_info && last_marginalization_info->valid)
     {
         // 构造新的marginisation_factor construct new marginlization_factor
@@ -1262,7 +1275,7 @@ void Estimator::optimization()
                                  last_marginalization_parameter_blocks);
     }
 
-    ///添加IMU约束：WINDOW_SIZE个（滑窗相邻帧构建一个IMU约束）
+    // Step 2.2 添加IMU约束：WINDOW_SIZE个（滑窗相邻帧构建一个IMU约束）
     if(USE_IMU)
     {
         for (int i = 0; i < frame_count; i++)
@@ -1275,7 +1288,7 @@ void Estimator::optimization()
                 //这里添加的参数包括状态i和状态j
         }
     }
-    ///添加视觉重投影约束：观测次数大于2的特征，首次观测与之后每次观测构造一个约束 
+    // Step 2.3 添加视觉重投影约束：观测次数大于2的特征，首次观测与之后每次观测构造一个约束 
     int f_m_cnt = 0; //总的建立约束的特征被多少相机观测到 visual measurement count
     int feature_index = -1;
     for (auto &it_per_id : f_manager.feature)
@@ -1358,7 +1371,7 @@ void Estimator::optimization()
     if(frame_count < WINDOW_SIZE)
         return;
 
-    // -----------------------------marginalization ------------------------------------
+    /// -----------------------------marginalization ------------------------------------
     TicToc t_whole_marginalization;
 
     //如果需要marg掉最老的一帧
